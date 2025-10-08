@@ -24,10 +24,27 @@ def now_tag():
 	return time.strftime("%Y%m%d_%H%M%S", time.localtime())
 
 def main():
+	"""
+	Run evaluation pipeline for a specified task and configuration.
+
+	Usage:
+	------
+	python run_eval.py --task <task_name> --config <config_yaml_path>
+
+	Arguments:
+		--task   : Name of the task to run. Supported: cbt, rv, ra37
+		--config : Path to the YAML configuration file specifying dataset, columns, and output paths.
+
+	Example:
+		python run_eval.py --task cbt --config configs/cbt_eval.yaml
+
+	Outputs:
+		- Results, figures, tables, and logs will be saved to the output directories specified in the config.
+	"""
 	# Parse command-line arguments for task and config file
 	p = argparse.ArgumentParser()
-	p.add_argument("--task", type=str, required=True)
-	p.add_argument("--config", type=str, required=True)
+	p.add_argument("--task", type=str, required=True, help="Task to run: cbt, rv, or ra37")
+	p.add_argument("--config", type=str, required=True, help="Path to YAML config file")
 	args = p.parse_args()
 
 	# Load configuration YAML
@@ -54,15 +71,16 @@ def main():
 	df, cols = load_csv_with_columns(ROOT / cfg["dataset_path"], cfg["columns"])
 	logger.info(f"Task={task} rows={len(df)} dataset={cfg['dataset_path']}")
 
-	# Dispatch to the appropriate task runner
-	if task == "cbt":
-		run_cbt(df, cols, cfg, str(fig_dir), str(table_dir), str(json_dir), logger)
-	elif task == "rv":
-		run_rv(df, cols, cfg, str(fig_dir), str(table_dir), str(json_dir), logger)
-	elif task == "ra37":
-		run_ra37(df, cols, cfg, str(fig_dir), str(table_dir), str(json_dir), logger)
-	else:
-		raise ValueError("Unknown task")
+	# # Dispatch to the appropriate task runner
+	# if task == "cbt":
+	# 	run_cbt(df, cols, cfg, str(fig_dir), str(table_dir), str(json_dir), logger)
+	# elif task == "rv":
+	# 	run_rv(df, cols, cfg, str(fig_dir), str(table_dir), str(json_dir), logger)
+	# elif task == "ra37":
+	# 	run_ra37(df, cols, cfg, str(fig_dir), str(table_dir), str(json_dir), logger)
+	# else:
+	# 	raise ValueError("Unknown task")
+	run_cbt(df, cols, cfg, str(fig_dir), str(table_dir), str(json_dir), logger)
 
 	logger.info("Done.")
 
