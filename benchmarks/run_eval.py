@@ -2,7 +2,6 @@ from re import L
 import argparse, sys, time
 from pathlib import Path
 import logging
-from scipy.stats import f
 from tqdm import tqdm
 import pandas as pd
 
@@ -17,7 +16,7 @@ print(f"ROOT: {ROOT}")
 from utils.log import build_logger, ensure_dir
 from utils.io import load_csv_with_columns, load_yaml_file
 from tasks.cbt import run_cbt
-# from tasks.rv import run_rv
+from tasks.rv import run_rv
 # from tasks.ra37 import run_ra37
 
 def now_tag():
@@ -101,8 +100,8 @@ def main():
 	# Dispatch
 	if task == "cbt":
 		run_cbt(df, cols, cfg, str(fig_dir), str(table_dir), str(json_dir), logger)
-	# elif task == "rv":
-	# 	run_rv(df, cols, cfg, str(fig_dir), str(table_dir), str(json_dir), logger)
+	elif task == "rv":
+		run_rv(df, cols, cfg, str(fig_dir), str(table_dir), str(json_dir), logger)
 	# elif task == "ra37":
 	# 	run_ra37(df, cols, cfg, str(fig_dir), str(table_dir), str(json_dir), logger)
 	else:

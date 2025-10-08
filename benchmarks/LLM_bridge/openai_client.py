@@ -33,15 +33,29 @@ async def _ask_async(client, model, system_content, user_content, effort, timeou
     """
     logger.debug(f"[_ask_async] Sending async request: model={model}, effort={effort}, timeout={timeout_seconds}")
     try:
-        resp = await client.responses.create(
-            model=model,
-            reasoning={"effort": effort},
-            instructions=system_content,
-            input=user_content,
-            timeout=timeout_seconds,
-        )
-        logger.debug(f"[_ask_async] Received response: {resp.output_text!r}")
-        return resp.output_text
+        # Prefer Responses API for GPT-5 models when available; otherwise fall back to Chat Completions
+        if ("gpt-5" in str(model)) and hasattr(client, "responses"):
+            resp = await client.responses.create(
+                model=model,
+                reasoning={"effort": effort},
+                instructions=system_content,
+                input=user_content,
+                timeout=timeout_seconds,
+            )
+            logger.debug(f"[_ask_async] Received response (responses API): {resp.output_text!r}")
+            return resp.output_text
+        else:
+            resp = await client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_content},
+                    {"role": "user", "content": user_content},
+                ],
+                timeout=timeout_seconds,
+            )
+            text = resp.choices[0].message.content
+            logger.debug(f"[_ask_async] Received response (chat.completions): {text!r}")
+            return text
     except Exception as e:
         logger.error(f"[_ask_async] Exception during async OpenAI call: {e}")
         raise
@@ -146,15 +160,29 @@ def chat_complete_jsonless(api_base, model, system_content, user_content, effort
     logger.debug(f"[chat_complete_jsonless] Sending sync request: model={model}, effort={effort}, timeout={timeout_seconds}")
     client = get_openai_client(api_base)
     try:
-        resp = client.responses.create(
-            model=model,
-            reasoning={"effort": effort},
-            instructions=system_content,
-            input=user_content,
-            timeout=timeout_seconds,
-        )
-        logger.debug(f"[chat_complete_jsonless] Received response: {resp.output_text!r}")
-        return resp.output_text
+        # Prefer Responses API for GPT-5 models when available; otherwise fall back to Chat Completions
+        if ("gpt-5" in str(model)) and hasattr(client, "responses"):
+            resp = client.responses.create(
+                model=model,
+                reasoning={"effort": effort},
+                instructions=system_content,
+                input=user_content,
+                timeout=timeout_seconds,
+            )
+            logger.debug(f"[chat_complete_jsonless] Received response (responses API): {resp.output_text!r}")
+            return resp.output_text
+        else:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_content},
+                    {"role": "user", "content": user_content},
+                ],
+                timeout=timeout_seconds,
+            )
+            text = resp.choices[0].message.content
+            logger.debug(f"[chat_complete_jsonless] Received response (chat.completions): {text!r}")
+            return text
     except Exception as e:
         logger.error(f"[chat_complete_jsonless] Exception during sync OpenAI call: {e}")
         raise

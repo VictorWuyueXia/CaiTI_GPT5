@@ -1,6 +1,6 @@
 # benchmarks/configs/cbt.yaml
 task: "cbt"
-dataset_path: "../dataset/ACM HEALTH Datasets_V1 - CBT.csv"
+dataset_path: "../CaiTI_dataset/ACM HEALTH Datasets_V1 - CBT.csv"
 prompts_path: "configs/cbt_prompts.yaml"   # exact copies of agent prompts for maintenance
 
 columns:
