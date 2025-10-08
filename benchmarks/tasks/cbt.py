@@ -8,46 +8,147 @@ from tqdm import tqdm
 
 from utils.cache import try_load, save, stable_hash, config_signature, cleanup_cache
 from utils.io import load_yaml_file
-from eval.metrics import compute_binary, plot_confusion
-from agent_bridge.cbt import predict_stage1, predict_stage2, predict_stage3, predict_stage_with_config
+from metrics import compute_binary, plot_confusion
+from LLM_bridge.cbt import predict_stage1, predict_stage2, predict_stage3, predict_stage_with_config
+from LLM_bridge.openai_client import chat_complete_many
+from LLM_bridge.cbt import parse_decision
 
-def run_cbt(df, cols, cfg, fig_dir, table_dir, json_dir, logger):
+def _load_prompts_for_cbt(root, prompts_path):
     """
-    Evaluate CBT reasoner correctness per stage using agent's prompts.
-    - Reads dataset row-wise.
-    - For each stage: calls the agent bridge to obtain label and raw output.
-    - Aggregates per-stage and overall metrics and writes confusion matrices.
+    Load prompts YAML once. If prompts_path is None, load default 'configs/cbt_prompts.yaml'.
     """
-    # Prepare cache directory for storing intermediate results
-    cache_dir = Path(cfg["cache_dir"])
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    # Optional: clean up old cache entries to avoid infinite growth
-    max_age_days = cfg.get("cache_max_age_days", None)
-    if max_age_days is not None:
-        cleanup_cache(cache_dir, max_age_days)
+    from utils.io import load_yaml_file
+    path = prompts_path if prompts_path else "configs/cbt_prompts.yaml"
+    return load_yaml_file(root / path)
 
-    # Initialize containers for ground truth labels, predictions, and detailed pairs for each stage
-    all_trues = {"stage1": [], "stage2": [], "stage3": []}
-    all_preds = {"stage1": [], "stage2": [], "stage3": []}
-    all_pairs = {"stage1": [], "stage2": [], "stage3": []}
+def _run_cbt_parallel(df, cols, cfg, fig_dir, table_dir, json_dir, logger,
+                      cache_dir, cfg_sig, prompts_path,
+                      all_trues, all_preds, all_pairs, use_cache, num_rows):
+    """
+    Parallel path:
+    - Build jobs for all 3 stages across rows (skip cached).
+    - Send as async-parallel batches via chat_complete_many.
+    - Parse results, update cache and tracking containers.
+    """
+    from pathlib import Path
+    from tqdm import tqdm
+    import pandas as pd
 
-    # Optional: path to custom prompts YAML for agent
-    prompts_path = cfg.get("prompts_path", None)
-
-    # Merge OpenAI config so GPT params are available when prompts_path is used
     root = Path(__file__).resolve().parent.parent  # benchmarks/
-    openai_cfg = load_yaml_file(root / "configs" / "openai_config.yaml")
-    cfg = {**openai_cfg, **cfg}
+    prompts = _load_prompts_for_cbt(root, prompts_path)
+    reasoner = prompts.get("reasoner", {})
 
-    # Limit examples for dev speed if configured
-    max_examples = cfg.get("max_examples", None)
-    num_rows = len(df) if max_examples is None else min(int(max_examples), len(df))
+    api_base = cfg.get("api_base")
+    model = cfg.get("model")
+    effort = cfg.get("effort")
+    timeout_seconds = cfg.get("timeout_seconds")
+    parallel = bool(cfg.get("parallel"))
+    max_batch = int(cfg.get("parallel_max_batch"))
 
-    # Build a stable configuration signature used in cache keys
-    cfg_sig = config_signature(cfg)
-    use_cache = bool(cfg.get("use_cache", True))
+    jobs = []  # each: dict with stage, idx, y_true, stmt, candidate, cache_key, system_content, user_content
+    for i in range(num_rows):
+        row = df.iloc[i]
+        stmt = str(row[cols["statement"]])
 
-    # Iterate over each row in the dataset
+        s1_text = str(row[cols["stage1_text"]]); s1_lab = int(row[cols["stage1_label"]])
+        s2_text = str(row[cols["stage2_text"]]); s2_lab = int(row[cols["stage2_label"]])
+        s3_text = str(row[cols["stage3_text"]]); s3_lab = int(row[cols["stage3_label"]])
+
+        # stage1
+        k1 = f"cbt::s1::{cfg_sig}::{stable_hash(stmt)}::{stable_hash(s1_text)}"
+        cached1 = try_load(cache_dir, k1) if use_cache else None
+        if cached1 is None:
+            sys1 = reasoner.get("stage1")
+            payload1 = f'"STATEMENT: {stmt}; UNHELPFUL_THOUGHTS: {s1_text};"'
+            jobs.append({
+                "stage": "stage1", "idx": i, "y_true": s1_lab,
+                "statement": stmt, "candidate": s1_text, "cache_key": k1,
+                "system_content": sys1, "user_content": payload1,
+            })
+        else:
+            all_trues["stage1"].append(s1_lab)
+            all_preds["stage1"].append(int(cached1["label"]))
+            all_pairs["stage1"].append({
+                "idx": i, "stage": "stage1", "y_true": s1_lab, "y_pred": int(cached1["label"]),
+                "statement": stmt, "candidate": s1_text, "raw": cached1["raw"]
+            })
+
+        # stage2
+        k2 = f"cbt::s2::{cfg_sig}::{stable_hash(stmt)}::{stable_hash(s1_text)}::{stable_hash(s2_text)}"
+        cached2 = try_load(cache_dir, k2) if use_cache else None
+        if cached2 is None:
+            sys2 = reasoner.get("stage2")
+            payload2 = f'"STATEMENT: {stmt}; UNHELPFUL_THOUGHTS: {s1_text}; CHALLENGE: {s2_text};"'
+            jobs.append({
+                "stage": "stage2", "idx": i, "y_true": s2_lab,
+                "statement": stmt, "candidate": s2_text, "cache_key": k2,
+                "system_content": sys2, "user_content": payload2,
+            })
+        else:
+            all_trues["stage2"].append(s2_lab)
+            all_preds["stage2"].append(int(cached2["label"]))
+            all_pairs["stage2"].append({
+                "idx": i, "stage": "stage2", "y_true": s2_lab, "y_pred": int(cached2["label"]),
+                "statement": stmt, "candidate": s2_text, "raw": cached2["raw"]
+            })
+
+        # stage3
+        k3 = f"cbt::s3::{cfg_sig}::{stable_hash(stmt)}::{stable_hash(s1_text)}::{stable_hash(s2_text)}::{stable_hash(s3_text)}"
+        cached3 = try_load(cache_dir, k3) if use_cache else None
+        if cached3 is None:
+            sys3 = reasoner.get("stage3")
+            payload3 = f'"STATEMENT: {stmt}; UNHELPFUL_THOUGHTS: {s1_text}; CHALLENGE: {s2_text}; REFRAME: {s3_text};"'
+            jobs.append({
+                "stage": "stage3", "idx": i, "y_true": s3_lab,
+                "statement": stmt, "candidate": s3_text, "cache_key": k3,
+                "system_content": sys3, "user_content": payload3,
+            })
+        else:
+            all_trues["stage3"].append(s3_lab)
+            all_preds["stage3"].append(int(cached3["label"]))
+            all_pairs["stage3"].append({
+                "idx": i, "stage": "stage3", "y_true": s3_lab, "y_pred": int(cached3["label"]),
+                "statement": stmt, "candidate": s3_text, "raw": cached3["raw"]
+            })
+
+    # Run in batches
+    from math import ceil
+    total = len(jobs)
+    if total == 0:
+        return
+
+    with tqdm(total=total, desc="CBT(async)") as pbar:
+        for off in range(0, total, max_batch):
+            chunk = jobs[off: off + max_batch]
+            items = [{"system_content": j["system_content"], "user_content": j["user_content"]} for j in chunk]
+            raws = chat_complete_many(
+                api_base, model, items, effort, timeout_seconds, True, max_batch
+            )
+            # map back
+            for j, raw in zip(chunk, raws):
+                lab = parse_decision(raw)
+                record = {"label": int(lab), "raw": raw}
+                if use_cache and cfg["save_intermediate"]:
+                    save(cfg["cache_dir"], j["cache_key"], record)
+
+                st = j["stage"]
+                all_trues[st].append(j["y_true"])
+                all_preds[st].append(int(lab))
+                all_pairs[st].append({
+                    "idx": j["idx"], "stage": st, "y_true": j["y_true"], "y_pred": int(lab),
+                    "statement": j["statement"], "candidate": j["candidate"], "raw": raw
+                })
+
+            pbar.update(len(chunk))
+
+def _run_cbt_sequential(df, cols, cfg, fig_dir, table_dir, json_dir, logger,
+                        cache_dir, cfg_sig, prompts_path,
+                        all_trues, all_preds, all_pairs, use_cache, num_rows):
+    """
+    Sequential path:
+    - Iterate rows and perform per-stage predictions with optional custom prompts.
+    - Honor caching, populate tracking containers, and save intermediates when configured.
+    """
     for i in tqdm(range(num_rows), desc="CBT"):
         row = df.iloc[i]
         # Extract statement and per-stage texts/labels from the row
@@ -160,6 +261,59 @@ def run_cbt(df, cols, cfg, fig_dir, table_dir, json_dir, logger):
             "candidate": s3_text,
             "raw": r3["raw"]
         })
+
+def run_cbt(df, cols, cfg, fig_dir, table_dir, json_dir, logger):
+    """
+    Evaluate CBT reasoner correctness per stage using agent's prompts.
+    - Reads dataset row-wise.
+    - For each stage: calls the agent bridge to obtain label and raw output.
+    - Aggregates per-stage and overall metrics and writes confusion matrices.
+    """
+    # Prepare cache directory for storing intermediate results
+    cache_dir = Path(cfg["cache_dir"])
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    # Optional: clean up old cache entries to avoid infinite growth
+    max_age_days = cfg.get("cache_max_age_days", None)
+    if max_age_days is not None:
+        cleanup_cache(cache_dir, max_age_days)
+
+    # Initialize containers for ground truth labels, predictions, and detailed pairs for each stage
+    all_trues = {"stage1": [], "stage2": [], "stage3": []}
+    all_preds = {"stage1": [], "stage2": [], "stage3": []}
+    all_pairs = {"stage1": [], "stage2": [], "stage3": []}
+
+    # Optional: path to custom prompts YAML for agent
+    prompts_path = cfg.get("prompts_path", None)
+
+    # Merge OpenAI config so GPT params are available when prompts_path is used
+    root = Path(__file__).resolve().parent.parent
+    openai_cfg = load_yaml_file(root / "configs" / "openai_config.yaml")
+    cfg = {**openai_cfg, **cfg}
+
+    # Parallel controls
+    parallel = bool(cfg.get("parallel", False))
+    parallel_max_batch = int(cfg.get("parallel_max_batch", 1))
+
+    # Limit examples
+    max_examples = cfg.get("max_examples", None)
+    num_rows = len(df) if max_examples is None else min(int(max_examples), len(df))
+
+    # Build config signature
+    cfg_sig = config_signature(cfg)
+    use_cache = bool(cfg.get("use_cache", True))
+
+    if parallel:
+        _run_cbt_parallel(
+            df, cols, cfg, fig_dir, table_dir, json_dir, logger,
+            cache_dir, cfg_sig, prompts_path,
+            all_trues, all_preds, all_pairs, use_cache, num_rows
+        )
+    else:
+        _run_cbt_sequential(
+            df, cols, cfg, fig_dir, table_dir, json_dir, logger,
+            cache_dir, cfg_sig, prompts_path,
+            all_trues, all_preds, all_pairs, use_cache, num_rows
+        )
 
     # ---- Compute metrics and save results ----
     import json as _json, numpy as _np

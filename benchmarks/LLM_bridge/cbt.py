@@ -1,8 +1,8 @@
 # benchmarks/agent_bridge/cbt.py
 from typing import Dict
 from pathlib import Path
-from benchmarks.utils.io import load_yaml_file
-from benchmarks.llm.openai_client import chat_complete_jsonless
+from utils.io import load_yaml_file
+from LLM_bridge.openai_client import chat_complete_jsonless
 
 def parse_decision(text):
 	"""
@@ -35,7 +35,9 @@ def _get_cfg_and_prompts():
 	cbt_cfg = load_yaml_file(root / "configs" / "cbt.yaml")
 	openai_cfg = load_yaml_file(root / "configs" / "openai_config.yaml")
 	cfg = {**openai_cfg, **cbt_cfg}
-	prompts = load_yaml_file(root / "configs" / "cbt_prompts.yaml")
+	# Resolve prompts path from CBT config to honor new centralized config setup
+	prompts_path = cbt_cfg.get("prompts_path", "configs/cbt_prompts.yaml")
+	prompts = load_yaml_file(root / prompts_path)
 	return cfg, prompts
 
 def predict_stage1(statement, unhelpful_thoughts):

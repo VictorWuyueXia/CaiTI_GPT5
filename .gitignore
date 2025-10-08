@@ -2,4 +2,15 @@
 agent/
 dataset/
 
+**/__pycache__/
+**/cache/
+**/logs/
+**/reports/
+**/data/
+**/results/
+**/notes/
+
+
+
+
 

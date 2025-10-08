@@ -1,13 +1,8 @@
 # benchmarks/configs/cbt.yaml
 task: "cbt"
 dataset_path: "../dataset/ACM HEALTH Datasets_V1 - CBT.csv"
-output_root: "reports"
-cache_dir: "cache/cbt"
-use_cache: true
-save_intermediate: true
 prompts_path: "configs/cbt_prompts.yaml"   # exact copies of agent prompts for maintenance
-max_examples: 5           # e.g., 50 for quick dev runs; null to use full dataset
-cache_max_age_days: 1     # e.g., 14 to clear entries older than 14 days; null to disable
+
 columns:
   statement: "Statement"
   stage1_text: "Unhelpful Thoughts (CBT_Stage1)"
