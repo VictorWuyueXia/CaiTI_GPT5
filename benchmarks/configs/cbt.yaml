@@ -1,0 +1,21 @@
+# benchmarks/configs/cbt.yaml
+task: "cbt"
+dataset_path: "../dataset/ACM HEALTH Datasets_V1 - CBT.csv"
+output_root: "reports"
+cache_dir: "cache/cbt"
+api_base: "https://api.openai.com/v1"
+model: "gpt-5"
+temperature: 0
+max_tokens: 256
+batch_size: 1
+save_intermediate: true
+timeout_seconds: 120
+prompts_path: "configs/cbt_prompts.yaml"   # exact copies of agent prompts for maintenance
+columns:
+  statement: "Statement"
+  stage1_text: "Unhelpful Thoughts (CBT_Stage1)"
+  stage1_label: "Unhelpful Thoughts Label"
+  stage2_text: "Challenge (CBT_Stage2)"
+  stage2_label: "Challenge Label"
+  stage3_text: "Another Way (CBT_Stage3)"
+  stage3_label: "Another Way Label"
