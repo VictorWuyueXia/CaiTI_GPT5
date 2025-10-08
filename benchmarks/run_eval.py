@@ -27,7 +27,7 @@ def now_tag():
 def _merge_general_into_task_cfg(task_cfg, root_cfg):
 	"""Merge general keys from root config into task config without overriding task-specific fields."""
 	merged = dict(task_cfg)
-	for k in ("output_root", "cache_dir", "save_intermediate", "max_examples", "use_cache", "cache_max_age_days"):
+	for k in ("output_root", "cache_dir", "save_intermediate", "max_examples", "use_cache", "cache_max_age_days", "parallel", "parallel_max_batch"):
 		if k in root_cfg:
 			merged[k] = root_cfg[k]
 	return merged
