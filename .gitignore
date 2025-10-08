@@ -1,8 +1,11 @@
 .vscode/
 agent/
 dataset/
+CaiTI_dataset/
 
 **/__pycache__/
+**/.DS_Store
+
 **/cache/
 **/logs/
 **/reports/
