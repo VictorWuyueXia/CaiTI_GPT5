@@ -1,0 +1,16 @@
+output_root: "reports"
+cache_dir: "cache"
+log_dir: "logs"
+cbt_config: "src/cbt/config_cbt.yaml"
+rv_config: "src/rv/config_rv.yaml"
+ra37_config: "src/ra37/config_ra37.yaml"
+ra_general_config: "src/ra_general/config_ra_general.yaml"
+
+save_intermediate: true
+max_examples: null           # e.g., 16 for quick dev runs; null to use full dataset
+
+parallel: true
+parallel_max_batch: 64
+
+use_cache: true
+cache_max_age_days: 30     # e.g., 14 to clear entries older than 14 days; null to disable

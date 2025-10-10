@@ -6,20 +6,19 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from utils.cache import try_load, save, stable_hash, config_signature, cleanup_cache
-from utils.io import load_yaml_file
-from metrics import compute_binary, plot_confusion
-from LLM_bridge.cbt import predict_stage1, predict_stage2, predict_stage3, predict_stage_with_config
-from LLM_bridge.openai_client import chat_complete_many
-from LLM_bridge.cbt import parse_decision
+from src.utils.cache import try_load, save, stable_hash, config_signature, cleanup_cache
+from src.utils.io import load_yaml_file
+from src.metrics import compute_binary, plot_confusion
+from src.cbt.openai_cbt import predict_stage1, predict_stage2, predict_stage3, predict_stage_with_config, parse_decision
+from src.openai.client_openai import chat_complete_many
 
 def _load_prompts_for_cbt(root, prompts_path):
     """
     Load prompts YAML once. If prompts_path is None, load default 'configs/cbt_prompts.yaml'.
     """
-    from utils.io import load_yaml_file
+    from src.utils.io import load_yaml_file
     # Use provided prompts_path or fall back to default
-    path = prompts_path if prompts_path else "configs/cbt_prompts.yaml"
+    path = prompts_path if prompts_path else "cbt/prompts_cbt.yaml"
     return load_yaml_file(root / path)
 
 def _run_cbt_parallel(df, cols, cfg, fig_dir, table_dir, json_dir, logger,
@@ -368,7 +367,7 @@ def run_cbt(df, cols, cfg, fig_dir, table_dir, json_dir, logger):
 
     # Merge OpenAI config so GPT params are available when prompts_path is used
     root = Path(__file__).resolve().parent.parent
-    openai_cfg = load_yaml_file(root / "configs" / "openai_config.yaml")
+    openai_cfg = load_yaml_file(root / "openai" / "config_openai.yaml")
     cfg = {**openai_cfg, **cfg}
 
     # Parallel controls

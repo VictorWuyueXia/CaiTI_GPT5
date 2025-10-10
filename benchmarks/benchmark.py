@@ -13,11 +13,12 @@ print(f"ROOT: {ROOT}")
 # sys.path.insert(0, str(ROOT.parent / "agent"))  # import agent/src/*
 
 # Import utility and task-specific functions
-from utils.log import build_logger, ensure_dir
-from utils.io import load_csv_with_columns, load_yaml_file
-from tasks.cbt import run_cbt
-from tasks.rv import run_rv
-# from tasks.ra37 import run_ra37
+from src.utils.log import build_logger, ensure_dir
+from src.utils.io import load_csv_with_columns, load_yaml_file
+from src.cbt.cbt import run_cbt
+from src.rv.rv import run_rv
+from src.ra37.ra37 import run_ra37
+from src.ra_general.ra_general import run_ra_general
 
 def now_tag():
 	"""Return a timestamp string for unique run IDs."""
@@ -49,22 +50,24 @@ def main():
 	run_id = now_tag()
  
 	# Load central config (fixed path)
-	central_cfg_path = ROOT / "configs" / "config.yaml"
+	central_cfg_path = ROOT / "config.yaml"
 	root_cfg = load_yaml_file(central_cfg_path)
  
 	# Parse task
 	p = argparse.ArgumentParser()
-	p.add_argument("--task", type=str, required=False, help="Task to run: cbt, rv, ra37", default="cbt")
+	p.add_argument("--task", type=str, required=False, help="Task to run: cbt, rv, ra37, ra_general", default="cbt")
 	args = p.parse_args()
 
 	# Resolve task and task-specific config path
 	task = args.task.lower()
 	if task == "cbt":
-		task_cfg_rel = root_cfg.get("cbt_config", "configs/cbt.yaml")
+		task_cfg_rel = root_cfg.get("cbt_config", "src/cbt/config_cbt.yaml")
 	elif task == "rv":
-		task_cfg_rel = root_cfg.get("rv_config", "configs/rv.yaml")
+		task_cfg_rel = root_cfg.get("rv_config", "src/rv/config_rv.yaml")
 	elif task == "ra37":
-		task_cfg_rel = root_cfg.get("ra37_config", "configs/ra37.yaml")
+		task_cfg_rel = root_cfg.get("ra37_config", "src/ra37/config_ra37.yaml")
+	elif task == "ra_general":
+		task_cfg_rel = root_cfg.get("ra_general_config", "src/ra_general/config_ra_general.yaml")
 	else:
 		raise ValueError(f"Unsupported or unimplemented task: {task}")
  
@@ -80,7 +83,7 @@ def main():
 
 	# Merge general settings and OpenAI settings
 	cfg = _merge_general_into_task_cfg(task_cfg, root_cfg)
-	openai_cfg = load_yaml_file(ROOT / "configs" / "openai_config.yaml")
+	openai_cfg = load_yaml_file(ROOT / "src" / "openai" / "config_openai.yaml")
 	cfg = {**openai_cfg, **cfg}
 
 	# Prepare output directories
@@ -102,8 +105,10 @@ def main():
 		run_cbt(df, cols, cfg, str(fig_dir), str(table_dir), str(json_dir), logger)
 	elif task == "rv":
 		run_rv(df, cols, cfg, str(fig_dir), str(table_dir), str(json_dir), logger)
-	# elif task == "ra37":
-	# 	run_ra37(df, cols, cfg, str(fig_dir), str(table_dir), str(json_dir), logger)
+	elif task == "ra37":
+		run_ra37(df, cols, cfg, str(fig_dir), str(table_dir), str(json_dir), logger)
+	elif task == "ra_general":
+		run_ra_general(df, cols, cfg, str(fig_dir), str(table_dir), str(json_dir), logger)
 	else:
 		raise ValueError(f"Unknown task: {task}")
 

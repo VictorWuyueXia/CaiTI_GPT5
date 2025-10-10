@@ -1,6 +1,6 @@
 task: "rv"
 dataset_path: "../CaiTI_dataset/ACM HEALTH Datasets_V1 - RV.csv"
-prompts_path: "configs/rv_prompts.yaml"
+prompts_path: "rv/prompts_rv.yaml"
 
 columns:
   topic: "Dimension"

@@ -1,0 +1,11 @@
+task: "ra37"
+dataset_path: "../CaiTI_dataset/ACM HEALTH Datasets_V1 - Response Analyzer 37 Dimensions.csv"
+prompts_path: "ra37/prompts_ra37.yaml"
+
+columns:
+  dimension: "Dimension"
+  dimension_label: "Dimension Label"
+  response: "Response"
+  score: "Score"
+
+

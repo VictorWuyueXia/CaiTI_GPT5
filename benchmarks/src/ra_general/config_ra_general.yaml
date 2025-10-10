@@ -1,0 +1,9 @@
+task: "ra_general"
+dataset_path: "../CaiTI_dataset/ACM HEALTH Datasets_V1 - Response Analyzer General.csv"
+prompts_path: "ra_general/prompts_ra_general.yaml"
+
+columns:
+  dimension: "Dimension"
+  response: "Response"
+
+

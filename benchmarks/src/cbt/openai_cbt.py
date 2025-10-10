@@ -1,8 +1,8 @@
 # benchmarks/agent_bridge/cbt.py
 from typing import Dict
 from pathlib import Path
-from utils.io import load_yaml_file
-from LLM_bridge.openai_client import chat_complete_jsonless
+from src.utils.io import load_yaml_file
+from src.openai.client_openai import chat_complete_jsonless
 import logging
 
 # Set up logger for this module
@@ -50,14 +50,14 @@ def _get_cfg_and_prompts():
     """
     Load and merge configuration and prompt files for CBT and OpenAI.
     """
-    root = Path(__file__).resolve().parent.parent  # benchmarks/
+    root = Path(__file__).resolve().parent.parent  # benchmarks/src
     logger.info("[_get_cfg_and_prompts] Loading CBT and OpenAI configs")
     # Load CBT-specific config and OpenAI config, then merge so GPT params are available
-    cbt_cfg = load_yaml_file(root / "configs" / "cbt.yaml")
-    openai_cfg = load_yaml_file(root / "configs" / "openai_config.yaml")
+    cbt_cfg = load_yaml_file(root / "cbt" / "config_cbt.yaml")
+    openai_cfg = load_yaml_file(root / "openai" / "config_openai.yaml")
     cfg = {**openai_cfg, **cbt_cfg}
     # Resolve prompts path from CBT config to honor new centralized config setup
-    prompts_path = cbt_cfg.get("prompts_path", "configs/cbt_prompts.yaml")
+    prompts_path = cbt_cfg.get("prompts_path", "cbt/prompts_cbt.yaml")
     logger.info(f"[_get_cfg_and_prompts] Loading prompts from {prompts_path}")
     prompts = load_yaml_file(root / prompts_path)
     return cfg, prompts

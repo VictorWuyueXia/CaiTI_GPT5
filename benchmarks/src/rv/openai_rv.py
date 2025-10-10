@@ -3,10 +3,10 @@ from pathlib import Path
 import logging
 
 # Import utility functions for YAML loading and OpenAI API interaction
-from utils.io import load_yaml_file
-from LLM_bridge.openai_client import chat_complete_jsonless
+from src.utils.io import load_yaml_file
+from src.openai.client_openai import chat_complete_jsonless
 # Import decision parsing function from CBT module (reused for RV)
-from LLM_bridge.cbt import parse_decision
+from src.cbt.openai_cbt import parse_decision
 
 # Set up logger for this module
 logger = logging.getLogger("LLM_bridge.rv")
@@ -22,14 +22,14 @@ def _get_cfg_and_prompts() -> (Dict, Dict):
     logger.info("[_get_cfg_and_prompts] Loading RV and OpenAI configs")
     
     # Load RV-specific configuration
-    rv_cfg = load_yaml_file(root / "configs" / "rv.yaml")
+    rv_cfg = load_yaml_file(root / "rv" / "config_rv.yaml")
     # Load OpenAI API configuration
-    openai_cfg = load_yaml_file(root / "configs" / "openai_config.yaml")
+    openai_cfg = load_yaml_file(root / "openai" / "config_openai.yaml")
     # Merge configurations (OpenAI config takes precedence, then RV config)
     cfg = {**openai_cfg, **rv_cfg}
     
     # Get prompts path from RV config or use default
-    prompts_path = rv_cfg.get("prompts_path", "configs/rv_prompts.yaml")
+    prompts_path = rv_cfg.get("prompts_path", "rv/prompts_rv.yaml")
     logger.info(f"[_get_cfg_and_prompts] Loading prompts from {prompts_path}")
     
     # Load prompts YAML file

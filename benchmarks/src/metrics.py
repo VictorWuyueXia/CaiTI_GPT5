@@ -1,4 +1,4 @@
-# benchmarks/eval/metrics.py
+# benchmarks/src/metrics.py
 
 from pathlib import Path
 import numpy as np

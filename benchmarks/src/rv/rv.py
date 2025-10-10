@@ -3,11 +3,11 @@ from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
 
-from utils.cache import try_load, save, stable_hash, config_signature, cleanup_cache
-from utils.io import load_yaml_file
-from metrics import compute_binary, plot_confusion
-from LLM_bridge.rv import predict_reasoner
-from LLM_bridge.openai_client import chat_complete_many
+from src.utils.cache import try_load, save, stable_hash, config_signature, cleanup_cache
+from src.utils.io import load_yaml_file
+from src.metrics import compute_binary, plot_confusion
+from src.rv.openai_rv import predict_reasoner
+from src.openai.client_openai import chat_complete_many
 
 
 def _run_rv_parallel(df, cols, cfg, fig_dir, table_dir, json_dir, logger,
@@ -22,12 +22,12 @@ def _run_rv_parallel(df, cols, cfg, fig_dir, table_dir, json_dir, logger,
     # Load merged cfg (so GPT params are available)
     # Combine OpenAI config, RV config, and runtime config with precedence: runtime > RV > OpenAI
     root = Path(__file__).resolve().parent.parent
-    rv_cfg = load_yaml_file(root / "configs" / "rv.yaml")
-    openai_cfg = load_yaml_file(root / "configs" / "openai_config.yaml")
+    rv_cfg = load_yaml_file(root / "rv" / "config_rv.yaml")
+    openai_cfg = load_yaml_file(root / "openai" / "config_openai.yaml")
     merged_cfg = {**openai_cfg, **rv_cfg, **cfg}
 
     # Determine prompts path: use custom path if provided, otherwise use RV config default
-    prompts_path = cfg.get("prompts_path", rv_cfg.get("prompts_path", "configs/rv_prompts.yaml"))
+    prompts_path = cfg.get("prompts_path", rv_cfg.get("prompts_path", "rv/prompts_rv.yaml"))
     logger.info(f"[RV][Parallel] Using prompts_path={prompts_path}")
 
     # Extract API configuration parameters from merged config
@@ -99,7 +99,7 @@ def _run_rv_parallel(df, cols, cfg, fig_dir, table_dir, json_dir, logger,
         raws = chat_complete_many(api_base, model, items, effort, timeout_seconds, True, max_batch)
         
         # Import here to avoid circular imports
-        from LLM_bridge.cbt import parse_decision
+        from src.cbt.openai_cbt import parse_decision
         
         # Process each response from the batch
         for j, raw in enumerate(raws):
@@ -221,7 +221,7 @@ def run_rv(df, cols, cfg, fig_dir, table_dir, json_dir, logger):
 
     # Merge OpenAI config (align with CBT)
     root = Path(__file__).resolve().parent.parent
-    openai_cfg = load_yaml_file(root / "configs" / "openai_config.yaml")
+    openai_cfg = load_yaml_file(root / "openai" / "config_openai.yaml")
     cfg = {**openai_cfg, **cfg}
 
     # Parallel controls

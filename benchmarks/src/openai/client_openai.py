@@ -2,6 +2,7 @@ import os
 import logging
 from openai import OpenAI
 from openai import AsyncOpenAI
+from tqdm import tqdm
 
 # Set up logger for this module
 logger = logging.getLogger("LLM_bridge.openai_client")
@@ -64,16 +65,17 @@ async def _gather_async(api_base, model, items, effort, timeout_seconds, max_bat
     """
     Run async requests concurrently with a bounded semaphore equal to max_batch.
     Each item is a dict: {"system_content": str, "user_content": str}
+    Progress is reported via a single tqdm bar updated as tasks complete.
     """
     import asyncio
     logger.info(f"[_gather_async] Gathering {len(items)} async requests with max_batch={max_batch}")
     client = get_async_openai_client(api_base)
     sem = asyncio.Semaphore(max_batch)
 
-    async def _runner(it):
+    async def _runner_indexed(idx, it):
         async with sem:
             logger.debug(f"[_gather_async:_runner] Processing item with system_content={it['system_content'][:30]!r}..., user_content={it['user_content'][:30]!r}...")
-            return await _ask_async(
+            res = await _ask_async(
                 client,
                 model,
                 it["system_content"],
@@ -81,10 +83,16 @@ async def _gather_async(api_base, model, items, effort, timeout_seconds, max_bat
                 effort,
                 timeout_seconds,
             )
+            return idx, res
 
-    tasks = [asyncio.create_task(_runner(it)) for it in items]
+    tasks = [asyncio.create_task(_runner_indexed(i, it)) for i, it in enumerate(items)]
+    results = [None] * len(items)
     try:
-        results = await asyncio.gather(*tasks)
+        with tqdm(total=len(items), desc="API", smoothing=0.1, mininterval=0.2, dynamic_ncols=True, ascii=True, leave=False) as pbar:
+            for coro in asyncio.as_completed(tasks):
+                idx, res = await coro
+                results[idx] = res
+                pbar.update(1)
         logger.info(f"[_gather_async] Completed all async requests")
         return results
     except Exception as e:
