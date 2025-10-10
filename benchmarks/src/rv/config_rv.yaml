@@ -1,0 +1,11 @@
+task: "rv"
+dataset_path: "../CaiTI_dataset/ACM HEALTH Datasets_V1 - RV.csv"
+prompts_path: "rv/prompts_rv.yaml"
+
+columns:
+  topic: "Dimension"
+  original: "Original Response"
+  follow_up: "Follow-up Response"
+  label: "Follow-up Response Score"
+
+

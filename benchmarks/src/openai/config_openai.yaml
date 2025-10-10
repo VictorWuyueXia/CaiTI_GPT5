@@ -1,0 +1,4 @@
+api_base: "https://us.api.openai.com/v1"
+model: "gpt-5"
+effort: "low"
+timeout_seconds: 120
