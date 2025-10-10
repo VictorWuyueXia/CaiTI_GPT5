@@ -1,4 +1,5 @@
 .vscode/
+.cursorignore
 agent/
 dataset/
 
