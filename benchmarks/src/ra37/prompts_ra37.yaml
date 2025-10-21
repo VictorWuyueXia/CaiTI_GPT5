@@ -8,50 +8,49 @@ analyzer: |
   To assign the user input with DIMENSION and SCORE.
 
   All dimension names are:
-  1_weight, 1_mood, 1_medication, 1_care, 2_house, 3_talk, 3_emo, 4_safe, 4_risk, 5_sleep, 5_eat, 5_work, 5_work_dayoff,
-  5_showup, 6_finance, 7_nutrition, 8_problem, 9_support, 9_family, 10_drug, 10_ciga, 10_alcohol, 11_hobbies, 11_creativity, 12_community, 
-  13_support, 13_social, 14_sex, 14_comfortable, 14_protection, 15_productivity, 15_work_motivation, 16_coping, 17_sib, 17_arrest,17_legal, DLA_18_hygiene, DLA_21_sports
+  1_weight, 2_mood, 3_medication, 4_care, 5_house, 6_talk, 7_emo, 8_safe, 9_risk, 10_sleep, 11_eat, 12_work, 13_work_life,
+  14_show_up, 15_finance, 16_nutrition, 17_problem, 18_support, 19_family_relationship, 20_alcohol, 21_tobacco, 22_substance, 23_leisure, 24_creativity, 25_community, 
+  26_support_social, 27_relationship_social, 28_boundary, 29_safe_sex, 30_productivity, 31_motivation, 32_coping, 33_self_harm, 34_lawful, 35_legal, 36_hygiene, 36_hygiene, 37_exercise
   Yes, No, Maybe, Question, Stop
 
   The definition of each dimension are:
   1_weight: Maintaining stable weight
-  1_mood: Managing mood 
-  1_medication: Taking medication as prescribed
-  1_care: Participating primary and mental health care
-  2_house: Organizing personal possessions and doing housework
-  3_talk: Talking to other people
-  3_emo: Expressing feelings to other people
-  4_safe: Managing personal safety
-  4_risk: Managing risk
-  5_sleep: Following regular schedule for bedtime and sleeping enough
-  5_eat: Maintaining regular schedule for eating
-  5_work: Managing work/school
-  5_work_dayoff: Having work-life balance
-  5_showup: Showing up for appointments and obligations
-  6_finance: Managing finance and items of value 
-  7_nutrition: Getting adequate nutrition
-  8_problem: Problem solving and decision making capability
-  9_support: Family support
-  9_family: Family relationship
-  10_drug: Other substances abuse
-  10_ciga: Tobacco abuse
-  10_alcohol: Alcohol abuse
-  11_hobbies: Enjoying personal choices for leisure activities
-  11_creativity: Creativity
-  12_community: Participation in community
-  13_support: Support from social network
-  13_social: Relationship with friends and colleagues
-  14_sex: Active in Sex
-  14_comfortable: Managing boundaries in close relationship
-  14_protection: Managing sexual safety
-  15_productivity: Productivity at work or school
-  15_work_motivation: Motivation at work or school
-  16_coping: Coping skills to de-stress
-  17_sib: Exhibiting control over self-harming behavior
-  17_arrest: Law-abiding
-  17_legal: Managing legal issue
-  18_hygiene: Maintaining personal hygiene
-  21_sports: Doing exercises and sports
+  2_mood: Managing mood 
+  3_medication: Taking medication as prescribed
+  4_care: Participating primary and mental health care
+  5_house: Organizing personal possessions and doing housework
+  6_talk: Talking to other people
+  7_emo: Expressing feelings to other people
+  8_safe: Managing personal safety
+  9_risk: Managing risk
+  10_sleep: Following regular schedule for bedtime and sleeping enough
+  11_eat: Maintaining regular schedule for eating
+  12_work: Managing work/school
+  13_work_life: Having work-life balance
+  14_show_up: Showing up for appointments and obligations
+  15_finance: Managing finance and items of value 
+  16_nutrition: Getting adequate nutrition
+  17_problem: Problem solving and decision making capability
+  18_support: Family support
+  19_family_relationship: Family relationship
+  20_alcohol: Alcohol abuse
+  21_tobacco: Tobacco abuse
+  22_substance: Other substances abuse
+  23_leisure: Enjoying personal choices for leisure activities
+  24_creativity: Creativity
+  25_community: Participation in community
+  26_support_social: Support from social network
+  27_relationship_social: Relationship with friends and colleagues
+  28_boundary: Active in Sex
+  29_safe_sex: Managing boundaries in close relationship
+  30_productivity: Productivity at work or school
+  31_motivation: Motivation at work or school
+  32_coping: Coping skills to de-stress
+  33_self_harm: Exhibiting control over self-harming behavior
+  34_lawful: Law-abiding
+  35_legal: Managing legal issue
+  36_hygiene: Maintaining personal hygiene
+  37_exercise: Doing exercises and sports
 
 
   There are some dimension maybe confusing, to distinguish them:
@@ -74,10 +73,10 @@ analyzer: |
   {"in":"I didn't measure my weight recently.", "res": "1_weight, 2"}
   {"in":"My weight has increased a lot these days.", "res": "1_weight, 2"}
   {"in":"I get some weight these days.", "res": "1_weight, 1"}
-  {"in":"My emotions are out of my control.", "res": "1_mood, 2"}
-  {"in":"I don't have a therapist.", "res": "1_care, 0"}
-  {"in":"I don't have a psychiatrist.", "res": "1_care, 0"}
-  {"in":"I haven't visited my prescriber for a while.", "res": "1_care, 1"}
-  {"in":"I haven't gone to my case manager for a while.", "res": "1_care, 1"}
+  {"in":"My emotions are out of my control.", "res": "2_mood, 2"}
+  {"in":"I don't have a therapist.", "res": "4_care, 0"}
+  {"in":"I don't have a psychiatrist.", "res": "4_care, 0"}
+  {"in":"I haven't visited my prescriber for a while.", "res": "4_care, 1"}
+  {"in":"I haven't gone to my case manager for a while.", "res": "4_care, 1"}
 
 

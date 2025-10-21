@@ -3,11 +3,14 @@ from pathlib import Path
 import re
 import pandas as pd
 from tqdm import tqdm
+import numpy as np
 
 from src.utils.cache import try_load, save, stable_hash, config_signature, cleanup_cache
 from src.utils.io import load_yaml_file
 from src.metrics import compute_multiclass, plot_confusion
 from src.openai.client_openai import chat_complete_many, chat_complete_jsonless
+from sklearn.metrics import confusion_matrix
+import matplotlib.pyplot as plt
 
 
 def _parse_score_from_raw(raw_text):
@@ -51,9 +54,78 @@ def _parse_score_from_raw(raw_text):
 	return None
 
 
+def _extract_raw_label_token(raw_text):
+	"""
+	Extract the dimension label token directly from raw LLM output (without altering raw).
+	Rules:
+	- If JSON-like and has 'dimension', use it.
+	- Else if JSON-like and has 'res', take the text before the first comma.
+	- Otherwise, take the substring before the first comma from plain text.
+	- Strip optional prefix 'DLA_' if present.
+	Returns the token string (e.g., '3_talk').
+	"""
+	s = str(raw_text).strip()
+	token = None
+	if s.startswith("{") and s.endswith("}"):
+		try:
+			obj = json.loads(s)
+			kl = {str(k).lower(): v for k, v in obj.items()}
+			if "dimension" in kl:
+				token = str(kl["dimension"]).strip()
+			elif "res" in kl:
+				token = str(kl["res"]).split(",", 1)[0].strip()
+		except Exception:
+			token = None
+	if token is None:
+		token = s.split(",", 1)[0].strip()
+	# Remove optional leading 'DLA_'
+	if token.upper().startswith("DLA_"):
+		token = token.split("_", 1)[1]
+	return token
+
+
+def _parse_dimension_label_direct(raw_text, allowed_lower_to_canonical):
+	"""
+	Parse dimension label directly from raw output.
+	- Extract token via _extract_raw_label_token
+	- Lowercase it and look up in allowed set (lower->canonical)
+	- If not found, return the fallback 'NA, 99'
+	"""
+	tok = _extract_raw_label_token(raw_text)
+	if tok is None:
+		return "NA, 99"
+	key = tok.strip().lower()
+	return allowed_lower_to_canonical.get(key, "NA, 99")
+
+
+def _plot_confusion_large(y_true, y_pred, labels, title, out_path, figsize_w, figsize_h, dpi, tick_fontsize, ann_fontsize, tick_rotation):
+	"""
+	Plot and save a large confusion matrix with controllable font sizes for readability.
+	All parameters are required to avoid hidden defaults.
+	"""
+	cm = confusion_matrix(y_true, y_pred, labels=labels)
+	fig, ax = plt.subplots(figsize=(figsize_w, figsize_h), dpi=dpi)
+	im = ax.imshow(cm, cmap="Blues")
+	ax.set_title(title)
+	ax.set_xlabel("Predicted")
+	ax.set_ylabel("True")
+	ax.set_xticks(range(len(labels)))
+	ax.set_yticks(range(len(labels)))
+	ax.set_xticklabels([str(x) for x in labels], rotation=tick_rotation, fontsize=tick_fontsize)
+	ax.set_yticklabels([str(x) for x in labels], fontsize=tick_fontsize)
+	for (i, j), v in np.ndenumerate(cm):
+		ax.text(j, i, str(v), ha="center", va="center", color="black", fontsize=ann_fontsize)
+	fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+	fig.tight_layout()
+	Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+	fig.savefig(out_path)
+	plt.close(fig)
+
+
 def _run_ra37_sequential(df, cols, cfg, fig_dir, table_dir, json_dir, logger,
 						  cache_dir, cfg_sig, prompts_path,
-						  all_trues, all_preds, all_pairs, use_cache, num_rows):
+						  all_trues, all_preds, all_pairs, use_cache, num_rows,
+						  dim_norm_map):
 	"""
 	Sequential execution path for RA37 evaluation.
 	Processes rows one by one with progress tracking.
@@ -93,13 +165,21 @@ def _run_ra37_sequential(df, cols, cfg, fig_dir, table_dir, json_dir, logger,
 			if label is None:
 				logger.warning(f"[RA37][Sequential] Failed to parse score; default -1 at row {i}")
 				label = -1
-			r = {"label": label, "raw": raw}
+			# Parse dimension label directly; fallback to 'NA, 99'
+			dim_pred = _parse_dimension_label_direct(raw, dim_norm_map)
+			r = {"label": label, "raw": raw, "dim_pred": dim_pred}
 			# Save intermediate output to cache if enabled
 			if use_cache and cfg["save_intermediate"]:
 				save(cfg["cache_dir"], k, r)
 		else:
 			# Use previously cached result
 			r = cached
+			# Backfill dim_pred from raw if absent in older cache entries
+			if isinstance(r, dict) and r.get("dim_pred") is None:
+				try:
+					r["dim_pred"] = _parse_dimension_label_direct(r.get("raw"), dim_norm_map)
+				except Exception:
+					pass
 
 		# Track gold and predicted labels for reporting
 		all_trues.append(y_true)
@@ -111,6 +191,7 @@ def _run_ra37_sequential(df, cols, cfg, fig_dir, table_dir, json_dir, logger,
 			"dimension_label": dim_label,
 			"response": response,
 			"raw": r["raw"],
+			"dim_pred": r.get("dim_pred") if isinstance(r, dict) else None,
 		})
 
 	logger.info(f"[RA37][Sequential] Completed all {num_rows} rows.")
@@ -118,7 +199,8 @@ def _run_ra37_sequential(df, cols, cfg, fig_dir, table_dir, json_dir, logger,
 
 def _run_ra37_parallel(df, cols, cfg, fig_dir, table_dir, json_dir, logger,
 						cache_dir, cfg_sig, prompts_path,
-						all_trues, all_preds, all_pairs, use_cache, num_rows):
+						all_trues, all_preds, all_pairs, use_cache, num_rows,
+						dim_norm_map):
 	"""
 	Parallel execution path for RA37 evaluation using async batch requests.
 	Likely much faster than sequential for large datasets.
@@ -167,6 +249,7 @@ def _run_ra37_parallel(df, cols, cfg, fig_dir, table_dir, json_dir, logger,
 				"dimension_label": dim_label,
 				"response": response,
 				"raw": cached["raw"],
+				"dim_pred": cached.get("dim_pred") if isinstance(cached, dict) else _parse_dimension_label_direct(cached.get("raw"), dim_norm_map),
 			})
 		else:
 			# Otherwise queue request for batch call later
@@ -198,7 +281,9 @@ def _run_ra37_parallel(df, cols, cfg, fig_dir, table_dir, json_dir, logger,
 			if label is None:
 				logger.warning(f"[RA37][Parallel] Failed to parse score; default -1 at row {i}")
 				label = -1
-			r = {"label": label, "raw": raw}
+			# Parse dimension prediction directly with fallback
+			dim_pred = _parse_dimension_label_direct(raw, dim_norm_map)
+			r = {"label": label, "raw": raw, "dim_pred": dim_pred}
 			# Persist result to cache for future reuse (if allowed)
 			if use_cache and cfg["save_intermediate"]:
 				save(cfg["cache_dir"], keys[j], r)
@@ -212,6 +297,7 @@ def _run_ra37_parallel(df, cols, cfg, fig_dir, table_dir, json_dir, logger,
 				"dimension_label": dim_label,
 				"response": response,
 				"raw": r["raw"],
+				"dim_pred": r.get("dim_pred"),
 			})
 
 	logger.info("[RA37][Parallel] Completed async batch.")
@@ -254,20 +340,36 @@ def run_ra37(df, cols, cfg, fig_dir, table_dir, json_dir, logger):
 	use_cache = bool(cfg.get("use_cache", True))
 	prompts_path = cfg.get("prompts_path", None)
 
+	# Build allowed label set (lower->canonical) from dataset, plus NA, 99
+	allowed = {}
+	seen = set()
+	for v in df[cols["dimension_label"]].astype(str).tolist():
+		vv = v.strip()
+		if vv in seen:
+			continue
+		seen.add(vv)
+		allowed[vv.strip().lower()] = vv
+	# Include fallback as 38th class
+	allowed["na, 99"] = "NA, 99"
+	dim_norm_map = allowed
+	labels_dim = list(allowed.values())
+
 	# Launch appropriate execution path: parallel is recommended for large runs with sufficient quota
 	if parallel:
 		logger.info("[RA37] Using parallel execution path.")
 		_run_ra37_parallel(
 			df, cols, cfg, fig_dir, table_dir, json_dir, logger,
 			cache_dir, cfg_sig, prompts_path,
-			all_trues, all_preds, all_pairs, use_cache, num_rows
+			all_trues, all_preds, all_pairs, use_cache, num_rows,
+			dim_norm_map
 		)
 	else:
 		logger.info("[RA37] Using sequential execution path.")
 		_run_ra37_sequential(
 			df, cols, cfg, fig_dir, table_dir, json_dir, logger,
 			cache_dir, cfg_sig, prompts_path,
-			all_trues, all_preds, all_pairs, use_cache, num_rows
+			all_trues, all_preds, all_pairs, use_cache, num_rows,
+			dim_norm_map
 		)
 
 	# Metrics & reports
@@ -278,19 +380,58 @@ def run_ra37(df, cols, cfg, fig_dir, table_dir, json_dir, logger):
 		logger.warning(f"[RA37] Dropped {len(all_trues) - len(flt)} unparsable predictions from metrics")
 	y_true = [t for t, p, _ in flt]
 	y_pred = [p for t, p, _ in flt]
-	# Compute macro-averaged multiclass metrics (accuracy, precision, recall, f1)
-	mt = compute_multiclass(y_true, y_pred)
-	logger.info(f"[RA37] accuracy={mt['accuracy']:.3f}, precision={mt['precision_macro']:.3f}, recall={mt['recall_macro']:.3f}, f1={mt['f1_macro']:.3f}")
-	# Visualize (and save) confusion matrix PNG to disk
-	plot_confusion(y_true, y_pred, [0, 1, 2], "Confusion - ra37", str(Path(fig_dir) / "cm_ra37.png"))
-	logger.debug(f"[RA37] Saved confusion matrix to {Path(fig_dir) / 'cm_ra37.png'}")
+	# Compute macro-averaged multiclass metrics (accuracy, precision, recall, f1) for SCORE
+	score_mt = compute_multiclass(y_true, y_pred)
+	logger.info(
+		f"[RA37][Score] accuracy={score_mt['accuracy']:.3f}, precision={score_mt['precision_macro']:.3f}, "
+		f"recall={score_mt['recall_macro']:.3f}, f1={score_mt['f1_macro']:.3f}"
+	)
+	# Visualize (and save) confusion matrix PNG to disk (score-level 3-class)
+	plot_confusion(y_true, y_pred, [0, 1, 2], "Confusion - ra37 (score)", str(Path(fig_dir) / "cm_ra37.png"))
+	logger.debug(f"[RA37] Saved score confusion matrix to {Path(fig_dir) / 'cm_ra37.png'}")
+
+	# Build dimension-level metrics and confusion matrix (37+1 expected with NA, 99)
+	# dim_norm_map: lower->canonical (now includes 'NA, 99')
+	y_true_dim = []
+	y_pred_dim = []
+	for p in all_pairs:
+		pred = p.get("dim_pred")
+		if pred is None:
+			continue
+		# True label canonical is directly from dataset column
+		true_canon = str(p.get("dimension_label")).strip()
+		# Pred is already canonical or 'NA, 99' from parser
+		pred_canon = str(pred).strip()
+		if true_canon is None or pred_canon is None:
+			continue
+		y_true_dim.append(true_canon)
+		y_pred_dim.append(pred_canon)
+	if len(y_true_dim) > 0:
+		dim_mt = compute_multiclass(y_true_dim, y_pred_dim)
+		logger.info(
+			f"[RA37][Dimension] accuracy={dim_mt['accuracy']:.3f}, precision={dim_mt['precision_macro']:.3f}, "
+			f"recall={dim_mt['recall_macro']:.3f}, f1={dim_mt['f1_macro']:.3f}"
+		)
+		# Larger canvas, smaller tick/annotation fonts for readability
+		_plot_confusion_large(
+			y_true_dim, y_pred_dim, labels_dim,
+			"Confusion - ra37 (dimensions)", str(Path(fig_dir) / "cm_ra37_dim.png"),
+			figsize_w=22, figsize_h=22, dpi=220, tick_fontsize=6, ann_fontsize=5, tick_rotation=60
+		)
+		logger.debug(f"[RA37] Saved dimension confusion matrix to {Path(fig_dir) / 'cm_ra37_dim.png'}")
+	else:
+		# If we have no dimension predictions, still create empty metrics placeholder
+		dim_mt = {"accuracy": 0.0, "precision_macro": 0.0, "recall_macro": 0.0, "f1_macro": 0.0, "report": {}}
 
 	# Save all scored pairs (with gold, pred, question text, etc.) to disk as CSV for in-depth analysis
 	pairs_df = pd.DataFrame(all_pairs)
 	pairs_df.to_csv(Path(table_dir) / "pairs_ra37.csv", index=False)
 
 	# Save summary statistics to disk as compact JSON and as a CSV table
-	out_compact = {"ra37": {k: v for k, v in mt.items() if k != "report"}}
+	out_compact = {
+		"ra37": {k: v for k, v in score_mt.items() if k != "report"},
+		"ra37_dim": {k: v for k, v in dim_mt.items() if k != "report"}
+	}
 	Path(json_dir).mkdir(parents=True, exist_ok=True)
 	with open(Path(json_dir) / "summary.json", "w") as f:
 		json.dump(out_compact, f, ensure_ascii=False, indent=2)
@@ -298,10 +439,17 @@ def run_ra37(df, cols, cfg, fig_dir, table_dir, json_dir, logger):
 	pd.DataFrame([
 		{
 			"scope": "ra37",
-			"accuracy": mt["accuracy"],
-			"precision_macro": mt["precision_macro"],
-			"recall_macro": mt["recall_macro"],
-			"f1_macro": mt["f1_macro"],
+			"accuracy": score_mt["accuracy"],
+			"precision_macro": score_mt["precision_macro"],
+			"recall_macro": score_mt["recall_macro"],
+			"f1_macro": score_mt["f1_macro"],
+		},
+		{
+			"scope": "ra37_dim",
+			"accuracy": dim_mt["accuracy"],
+			"precision_macro": dim_mt["precision_macro"],
+			"recall_macro": dim_mt["recall_macro"],
+			"f1_macro": dim_mt["f1_macro"],
 		}
 	]).to_csv(Path(table_dir) / "metrics.csv", index=False)
 	logger.info(f"[RA37] Saved metrics CSV to {Path(table_dir) / 'metrics.csv'}")

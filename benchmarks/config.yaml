@@ -10,7 +10,7 @@ save_intermediate: true
 max_examples: null           # e.g., 16 for quick dev runs; null to use full dataset
 
 parallel: true
-parallel_max_batch: 64
+parallel_max_batch: 256
 
 use_cache: true
 cache_max_age_days: 30     # e.g., 14 to clear entries older than 14 days; null to disable

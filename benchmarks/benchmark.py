@@ -14,11 +14,17 @@ print(f"ROOT: {ROOT}")
 
 # Import utility and task-specific functions
 from src.utils.log import build_logger, ensure_dir
+print(f"Imported log module")
 from src.utils.io import load_csv_with_columns, load_yaml_file
+print(f"Imported io module")
 from src.cbt.cbt import run_cbt
+print(f"Imported cbt module")
 from src.rv.rv import run_rv
+print(f"Imported rv module")
 from src.ra37.ra37 import run_ra37
+print(f"Imported ra37 module")
 from src.ra_general.ra_general import run_ra_general
+print(f"Imported ra_general module")
 
 def now_tag():
 	"""Return a timestamp string for unique run IDs."""
@@ -47,8 +53,6 @@ def main():
 		- Results, figures, tables, and logs will be saved to the output directories specified in the config.
 	"""
 
-	run_id = now_tag()
- 
 	# Load central config (fixed path)
 	central_cfg_path = ROOT / "config.yaml"
 	root_cfg = load_yaml_file(central_cfg_path)
@@ -57,6 +61,7 @@ def main():
 	p = argparse.ArgumentParser()
 	p.add_argument("--task", type=str, required=False, help="Task to run: cbt, rv, ra37, ra_general", default="cbt")
 	args = p.parse_args()
+	print(f"Task: {args.task}")
 
 	# Resolve task and task-specific config path
 	task = args.task.lower()
@@ -70,6 +75,10 @@ def main():
 		task_cfg_rel = root_cfg.get("ra_general_config", "src/ra_general/config_ra_general.yaml")
 	else:
 		raise ValueError(f"Unsupported or unimplemented task: {task}")
+	print(f"Task config path: {task_cfg_rel}")
+ 
+	run_id = now_tag()
+	print(f"Timestamp: {run_id}")
  
 	# Load logger
 	log_dir = root_cfg.get("log_dir", "logs")
